@@ -22,12 +22,11 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      # Agar aapka gradle file 'android' folder ke andar hai, toh yeh line uncomment karein:
-      # - name: Change directory
-      #   run: cd android
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper
 
       - name: Grant execute permission for gradlew
-        run: chmod +x gradlew  # (Agar project folder ke andar hai toh path yahan dena padega, jaise android/gradlew)
+        run: chmod +x gradlew
 
       - name: Build Debug APK with Gradle
         run: ./gradlew assembleDebug
