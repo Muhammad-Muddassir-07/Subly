@@ -1,0 +1,46 @@
+{
+  "entities": {
+    "UserSubscriptionRecord": {
+      "title": "UserSubscriptionRecord",
+      "description": "Represents a synchronized YouTube subscription entry for a user.",
+      "type": "object",
+      "properties": {
+        "channelId": {
+          "type": "string",
+          "description": "Unique identifier of the subscribed YouTube channel."
+        },
+        "channelTitle": {
+          "type": "string",
+          "description": "Display title of the YouTube channel."
+        },
+        "channelAvatarUrl": {
+          "type": "string",
+          "description": "Avatar thumbnail URL for the channel."
+        },
+        "subscribedAt": {
+          "type": "number",
+          "description": "Timestamp when the channel was subscribed."
+        },
+        "notificationsEnabled": {
+          "type": "boolean",
+          "description": "Whether upload notifications are enabled for this channel."
+        },
+        "unreadCount": {
+          "type": "number",
+          "description": "Unread videos count for this subscription."
+        },
+        "lastSyncedAt": {
+          "type": "number",
+          "description": "Timestamp of the last sync operation."
+        }
+      },
+      "required": ["channelId", "channelTitle"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/subscriptions/{channelId}": {
+      "schema": "#/entities/UserSubscriptionRecord",
+      "description": "User subscribed channels synchronized with Firebase Firestore."
+    }
+  }
+}

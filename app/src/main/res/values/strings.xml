@@ -20,5 +20,4 @@
     <string name="playlists">Playlists</string>
     <string name="create_playlist">Create Playlist</string>
     <string name="api_key_settings">API Key &amp; Sync Settings</string>
-    <string name="firestore_database_id">(default)</string>
 </resources>

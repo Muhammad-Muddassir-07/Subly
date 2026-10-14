@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-android-subly-5937d684-9038-4db2-af23-bba4536eb9e8",
+      "rules": "firestore.rules"
+    }
+  ]
+}
