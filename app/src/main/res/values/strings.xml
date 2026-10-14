@@ -1,0 +1,24 @@
+<resources>
+    <string name="app_name">Subly</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_subscriptions">Subscriptions</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_profile">Profile</string>
+    <string name="search_hint">Search videos, channels, playlists…</string>
+    <string name="filter_all">All</string>
+    <string name="filter_tech">Tech</string>
+    <string name="filter_music">Music</string>
+    <string name="filter_gaming">Gaming</string>
+    <string name="filter_news">News</string>
+    <string name="filter_education">Education</string>
+    <string name="subscribe">Subscribe</string>
+    <string name="subscribed">Subscribed</string>
+    <string name="watch_later">Watch Later</string>
+    <string name="history">History</string>
+    <string name="liked_videos">Liked Videos</string>
+    <string name="playlists">Playlists</string>
+    <string name="create_playlist">Create Playlist</string>
+    <string name="api_key_settings">API Key &amp; Sync Settings</string>
+    <string name="firestore_database_id">(default)</string>
+</resources>

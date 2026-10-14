@@ -1,0 +1,6 @@
+{
+  "name": "Subly",
+  "description": "Smart YouTube subscriptions manager, feeds, playlists, search, and real-time synchronized playback.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
