@@ -56,7 +56,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -76,6 +79,7 @@ fun ProfileScreen(
 ) {
     BackHandler { onBackClick() }
 
+    val context = LocalContext.current
     val preferences by viewModel.preferences.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
 
@@ -136,13 +140,22 @@ fun ProfileScreen(
                                 color = SublyRedPrimary,
                                 modifier = Modifier.size(54.dp)
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = preferences.userName.firstOrNull()?.uppercase() ?: "S",
-                                        fontSize = 24.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White
+                                if (preferences.userPhotoUrl.isNotEmpty()) {
+                                    AsyncImage(
+                                        model = preferences.userPhotoUrl,
+                                        contentDescription = "User Avatar",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
                                     )
+                                } else {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = preferences.userName.firstOrNull()?.uppercase() ?: "S",
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = Color.White
+                                        )
+                                    }
                                 }
                             }
 
@@ -181,7 +194,7 @@ fun ProfileScreen(
 
                         OutlinedButton(
                             onClick = {
-                                viewModel.disconnectAccount()
+                                viewModel.disconnectAccount(context)
                                 onDisconnect()
                             },
                             shape = RoundedCornerShape(10.dp),

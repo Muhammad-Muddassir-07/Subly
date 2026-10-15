@@ -53,6 +53,17 @@ data class SearchUiState(
 class SublyViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = SublyRepository(application)
+    private val authManager = com.example.data.auth.FirebaseAuthManager()
+    private val firestoreRepo = com.example.data.repository.FirestoreSubscriptionRepository(application)
+
+    val currentUser: com.google.firebase.auth.FirebaseUser?
+        get() = authManager.currentUser
+
+    val firebaseUser: StateFlow<com.google.firebase.auth.FirebaseUser?> = authManager.authStateFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), authManager.currentUser)
+
+    private val _isAuthenticating = MutableStateFlow(false)
+    val isAuthenticating: StateFlow<Boolean> = _isAuthenticating.asStateFlow()
 
     // User preferences & API key state
     val preferences: StateFlow<UserPreferences> = repository.userPreferencesFlow
@@ -149,8 +160,30 @@ class SublyViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleSubscribe(channel: Channel) {
         viewModelScope.launch {
             repository.toggleSubscribe(channel.id, channel.isSubscribed)
-            val msg = if (channel.isSubscribed) "Unsubscribed from ${channel.title}" else "Subscribed to ${channel.title}"
+            val newSubscribedState = !channel.isSubscribed
+            val msg = if (newSubscribedState) "Subscribed to ${channel.title}" else "Unsubscribed from ${channel.title}"
             _userMessage.emit(msg)
+
+            val uid = authManager.currentUser?.uid
+            if (uid != null) {
+                try {
+                    if (newSubscribedState) {
+                        firestoreRepo.saveSubscription(
+                            userId = uid,
+                            subscription = com.example.data.repository.UserSubscriptionRecord(
+                                channelId = channel.id,
+                                channelTitle = channel.title,
+                                channelAvatarUrl = channel.avatarUrl,
+                                subscribedAt = System.currentTimeMillis()
+                            )
+                        )
+                    } else {
+                        firestoreRepo.deleteSubscription(uid, channel.id)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("SublyViewModel", "Firestore sync error: ${e.message}")
+                }
+            }
         }
     }
 
@@ -438,15 +471,73 @@ class SublyViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun connectAccount(email: String = "user@gmail.com", name: String = "YouTube Creator", isDemo: Boolean = false) {
+    fun connectAccount(
+        email: String = "user@gmail.com",
+        name: String = "YouTube Creator",
+        photoUrl: String = "",
+        isDemo: Boolean = false
+    ) {
         viewModelScope.launch {
-            repository.connectAccount(email, name, isDemo)
+            repository.connectAccount(email, name, photoUrl, isDemo)
             _userMessage.emit("Successfully connected as $name")
         }
     }
 
-    fun disconnectAccount() {
+    fun syncSubscriptionsWithFirestore(userId: String) {
         viewModelScope.launch {
+            try {
+                val currentSubscribed = subscribedChannels.value
+                if (currentSubscribed.isNotEmpty()) {
+                    val records = currentSubscribed.map { channel ->
+                        com.example.data.repository.UserSubscriptionRecord(
+                            channelId = channel.id,
+                            channelTitle = channel.title,
+                            channelAvatarUrl = channel.avatarUrl,
+                            subscribedAt = System.currentTimeMillis(),
+                            notificationsEnabled = true
+                        )
+                    }
+                    firestoreRepo.batchSyncSubscriptions(userId, records)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("SublyViewModel", "Firestore batch sync warning: ${e.message}")
+            }
+        }
+    }
+
+    fun signInWithGoogle(context: android.content.Context, onComplete: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            _isAuthenticating.value = true
+            val result = authManager.signInWithGoogle(context)
+            _isAuthenticating.value = false
+
+            result.onSuccess { user ->
+                val email = user.email ?: "google.user@gmail.com"
+                val name = user.displayName ?: "Google User"
+                val photoUrl = user.photoUrl?.toString() ?: ""
+                repository.connectAccount(email = email, name = name, photoUrl = photoUrl, isDemo = false)
+                _userMessage.emit("Welcome, $name!")
+                syncSubscriptionsWithFirestore(user.uid)
+                onComplete(true, null)
+            }.onFailure { exception ->
+                val errorMsg = when (exception) {
+                    is androidx.credentials.exceptions.GetCredentialCancellationException -> {
+                        // User cancelled or dismissed picker
+                        null
+                    }
+                    else -> exception.localizedMessage ?: "Sign-in failed. Please try again."
+                }
+                if (errorMsg != null) {
+                    _userMessage.emit(errorMsg)
+                }
+                onComplete(false, errorMsg)
+            }
+        }
+    }
+
+    fun disconnectAccount(context: android.content.Context? = null) {
+        viewModelScope.launch {
+            authManager.signOut(context)
             repository.disconnectAccount()
             _userMessage.emit("Disconnected account")
         }

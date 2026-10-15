@@ -32,6 +32,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,6 +42,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -69,6 +72,14 @@ fun ConnectScreen(
     onConnectedSuccess: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    androidx.activity.compose.BackHandler {
+        // Disallow back-navigation past ConnectScreen unless authenticated or connected
+    }
+
+    val context = LocalContext.current
+    val isAuthenticating by viewModel.isAuthenticating.collectAsState()
+
+    var authErrorMessage by remember { mutableStateOf<String?>(null) }
     var showApiKeyInput by remember { mutableStateOf(false) }
     var apiKeyText by remember { mutableStateOf("") }
     var apiKeyObscured by remember { mutableStateOf(true) }
@@ -174,13 +185,17 @@ fun ConnectScreen(
                 // Primary: Connect with Google / YouTube
                 Button(
                     onClick = {
-                        viewModel.connectAccount(
-                            email = "user@gmail.com",
-                            name = "Google Account",
-                            isDemo = false
-                        )
-                        onConnectedSuccess()
+                        authErrorMessage = null
+                        viewModel.signInWithGoogle(context) { success, error ->
+                            if (success) {
+                                authErrorMessage = null
+                                onConnectedSuccess()
+                            } else {
+                                authErrorMessage = error
+                            }
+                        }
                     },
+                    enabled = !isAuthenticating,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = SublyRedPrimary,
                         contentColor = Color.White
@@ -191,29 +206,59 @@ fun ConnectScreen(
                         .height(54.dp)
                         .testTag("connect_google_button")
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Surface(
-                            shape = CircleShape,
+                    if (isAuthenticating) {
+                        CircularProgressIndicator(
                             color = Color.White,
+                            strokeWidth = 2.5.dp,
                             modifier = Modifier.size(24.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "G",
-                                    color = SublyRedPrimary,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 15.sp
-                                )
-                            }
-                        }
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = "Connect with Google or YouTube",
+                            text = "Signing in with Google…",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
+                        )
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "G",
+                                        color = SublyRedPrimary,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 15.sp
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Connect with Google or YouTube",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                        }
+                    }
+                }
+
+                // Error feedback card if sign in failed or was cancelled
+                AnimatedVisibility(visible = authErrorMessage != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF451A1A)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = authErrorMessage ?: "Sign in could not be completed.",
+                            color = Color(0xFFFFB4AB),
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(12.dp)
                         )
                     }
                 }

@@ -50,6 +50,7 @@ class SublyRepository(private val context: Context) {
     private val KEY_IS_CONNECTED = booleanPreferencesKey("is_connected")
     private val KEY_USER_EMAIL = stringPreferencesKey("user_email")
     private val KEY_USER_NAME = stringPreferencesKey("user_name")
+    private val KEY_USER_PHOTO = stringPreferencesKey("user_photo_url")
 
     val userPreferencesFlow: Flow<UserPreferences> = context.dataStore.data.map { prefs ->
         UserPreferences(
@@ -60,15 +61,17 @@ class SublyRepository(private val context: Context) {
             backgroundPlay = true,
             isConnected = prefs[KEY_IS_CONNECTED] ?: false,
             userEmail = prefs[KEY_USER_EMAIL] ?: "",
-            userName = prefs[KEY_USER_NAME] ?: ""
+            userName = prefs[KEY_USER_NAME] ?: "",
+            userPhotoUrl = prefs[KEY_USER_PHOTO] ?: ""
         )
     }
 
-    suspend fun connectAccount(email: String, name: String, isDemo: Boolean = false) {
+    suspend fun connectAccount(email: String, name: String, photoUrl: String = "", isDemo: Boolean = false) {
         context.dataStore.edit { prefs ->
             prefs[KEY_IS_CONNECTED] = true
             prefs[KEY_USER_EMAIL] = email
             prefs[KEY_USER_NAME] = name
+            prefs[KEY_USER_PHOTO] = photoUrl
             prefs[KEY_DEMO_MODE] = isDemo
         }
     }
@@ -78,6 +81,7 @@ class SublyRepository(private val context: Context) {
             prefs[KEY_IS_CONNECTED] = false
             prefs[KEY_USER_EMAIL] = ""
             prefs[KEY_USER_NAME] = ""
+            prefs[KEY_USER_PHOTO] = ""
         }
     }
 

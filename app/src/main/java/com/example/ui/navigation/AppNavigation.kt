@@ -163,7 +163,7 @@ fun SublyAppShell(viewModel: SublyViewModel) {
         when (currentScreen) {
             ScreenDestination.SPLASH -> SplashScreen(
                 onSplashFinished = {
-                    if (preferences.isConnected) {
+                    if (viewModel.currentUser != null || preferences.isConnected) {
                         currentScreen = ScreenDestination.HOME
                     } else {
                         currentScreen = ScreenDestination.CONNECT

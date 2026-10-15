@@ -68,7 +68,8 @@ data class UserPreferences(
     val lastSyncTime: Long = 0,
     val isConnected: Boolean = false,
     val userEmail: String = "",
-    val userName: String = ""
+    val userName: String = "",
+    val userPhotoUrl: String = ""
 )
 
 enum class VideoFilterCategory(val displayName: String) {
