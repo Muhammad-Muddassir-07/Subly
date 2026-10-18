@@ -47,10 +47,22 @@ interface VideoDao {
 
     @Query("SELECT COUNT(*) FROM videos")
     suspend fun getCount(): Int
+
+    @Query("DELETE FROM videos WHERE id LIKE 'v1_%' OR id LIKE 'v2_%' OR id LIKE 'v3_%' OR id LIKE 'v4_%' OR id LIKE 'v5_%' OR id LIKE 'v6_%'")
+    suspend fun deleteLegacySampleVideos()
 }
 
 @Dao
 interface ChannelDao {
+    @Query("DELETE FROM channels WHERE id = 'UCvjgXvBlbQiydffZU7m1_aw' OR id = 'UC7_gcs09iThXybpVgjHZ_7g'")
+    suspend fun deleteLegacySampleChannels()
+
+    @Query("DELETE FROM channels WHERE id LIKE 'UC_user_%'")
+    suspend fun deleteFakeUserChannels()
+
+    @Query("DELETE FROM channels WHERE id = :id")
+    suspend fun deleteChannel(id: String)
+
     @Query("SELECT * FROM channels ORDER BY title ASC")
     fun getAllChannels(): Flow<List<ChannelEntity>>
 
@@ -67,6 +79,9 @@ interface ChannelDao {
     fun searchChannels(query: String): Flow<List<ChannelEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertChannel(channel: ChannelEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChannels(channels: List<ChannelEntity>)
 
     @Query("UPDATE channels SET isSubscribed = :isSubscribed WHERE id = :channelId")
@@ -78,6 +93,9 @@ interface ChannelDao {
 
 @Dao
 interface PlaylistDao {
+    @Query("SELECT COUNT(*) FROM playlists")
+    suspend fun getCount(): Int
+
     @Query("SELECT * FROM playlists ORDER BY updatedAt DESC")
     fun getAllPlaylists(): Flow<List<PlaylistEntity>>
 

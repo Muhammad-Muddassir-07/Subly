@@ -189,9 +189,7 @@ class SublyViewModel(application: Application) : AndroidViewModel(application) {
 
     // Video Player actions
     fun openVideo(video: Video) {
-        val comments = DefaultSublyData.sampleComments.filter { it.videoId == video.id }.ifEmpty {
-            DefaultSublyData.sampleComments
-        }
+        val comments = emptyList<Comment>()
 
         viewModelScope.launch {
             // Load resume progress if available
@@ -479,7 +477,44 @@ class SublyViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch {
             repository.connectAccount(email, name, photoUrl, isDemo)
+            repository.setupUserGoogleYouTubeData("user_${System.currentTimeMillis()}", name, email, photoUrl)
             _userMessage.emit("Successfully connected as $name")
+        }
+    }
+
+    fun updateOAuthToken(token: String) {
+        viewModelScope.launch {
+            repository.updateOAuthToken(token)
+        }
+    }
+
+    fun syncSubscriptionsWithOAuth(oauthToken: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = repository.syncSubscriptionsWithOAuth(oauthToken)
+            _isSyncing.value = false
+
+            when (result) {
+                is com.example.data.network.ApiResult.Success -> {
+                    val count = result.data
+                    val msg = if (count > 0) {
+                        "Successfully fetched $count YouTube subscriptions and latest videos!"
+                    } else {
+                        "Connected! No existing subscriptions found on this YouTube account."
+                    }
+                    _userMessage.emit(msg)
+                    val uid = authManager.currentUser?.uid
+                    if (uid != null) {
+                        syncSubscriptionsWithFirestore(uid)
+                    }
+                    onComplete(true, msg)
+                }
+                is com.example.data.network.ApiResult.Error -> {
+                    val errorMsg = result.message
+                    _userMessage.emit(errorMsg)
+                    onComplete(false, errorMsg)
+                }
+            }
         }
     }
 
@@ -516,7 +551,16 @@ class SublyViewModel(application: Application) : AndroidViewModel(application) {
                 val name = user.displayName ?: "Google User"
                 val photoUrl = user.photoUrl?.toString() ?: ""
                 repository.connectAccount(email = email, name = name, photoUrl = photoUrl, isDemo = false)
-                _userMessage.emit("Welcome, $name!")
+                _userMessage.emit("Welcome, $name! Syncing your YouTube data & feeds…")
+                
+                // Initialize and sync YouTube data for this Google user
+                repository.setupUserGoogleYouTubeData(
+                    userId = user.uid,
+                    name = name,
+                    email = email,
+                    photoUrl = photoUrl
+                )
+                
                 syncSubscriptionsWithFirestore(user.uid)
                 onComplete(true, null)
             }.onFailure { exception ->
@@ -531,6 +575,46 @@ class SublyViewModel(application: Application) : AndroidViewModel(application) {
                     _userMessage.emit(errorMsg)
                 }
                 onComplete(false, errorMsg)
+            }
+        }
+    }
+
+    fun addYouTubeChannel(handleOrUrl: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = repository.addYouTubeChannel(handleOrUrl)
+            _isSyncing.value = false
+            result.onSuccess { channel ->
+                _userMessage.emit("Added ${channel.title} with latest YouTube videos!")
+                val uid = authManager.currentUser?.uid
+                if (uid != null) {
+                    syncSubscriptionsWithFirestore(uid)
+                }
+                onComplete(true, "Successfully added ${channel.title}")
+            }.onFailure { e ->
+                val msg = e.localizedMessage ?: "Failed to find or add YouTube channel"
+                _userMessage.emit(msg)
+                onComplete(false, msg)
+            }
+        }
+    }
+
+    fun importSubscriptions(content: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isSyncing.value = true
+            val result = repository.importYouTubeSubscriptions(content)
+            _isSyncing.value = false
+            result.onSuccess { count ->
+                _userMessage.emit("Imported $count YouTube channels and synced latest videos!")
+                val uid = authManager.currentUser?.uid
+                if (uid != null) {
+                    syncSubscriptionsWithFirestore(uid)
+                }
+                onComplete(true, "Successfully imported $count channels!")
+            }.onFailure { e ->
+                val msg = e.localizedMessage ?: "Import failed. Please check the CSV or handles."
+                _userMessage.emit(msg)
+                onComplete(false, msg)
             }
         }
     }

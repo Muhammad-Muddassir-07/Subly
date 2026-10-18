@@ -263,14 +263,41 @@ fun ConnectScreen(
                     }
                 }
 
-                // Demo Mode Button (Instant frictionless entry for testing)
+                // Information Banner: No API key needed
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF1E293B),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = SuccessGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Automatic live YouTube feed sync is enabled. No API key required!",
+                            fontSize = 12.sp,
+                            color = Color(0xFFCBD5E1),
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+
+                // Demo / Direct Access Button (Instant Entry with Live Sync)
                 OutlinedButton(
                     onClick = {
                         viewModel.connectAccount(
-                            email = "demo@subly.local",
-                            name = "Subly Guest",
-                            isDemo = true
+                            email = "user@subly.app",
+                            name = "Subly Member",
+                            isDemo = false
                         )
+                        viewModel.syncNow()
                         onConnectedSuccess()
                     },
                     shape = RoundedCornerShape(14.dp),
@@ -279,28 +306,39 @@ fun ConnectScreen(
                         .height(50.dp)
                         .testTag("connect_demo_button")
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = SublyRedPrimary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Continue with Demo Account",
+                        text = "Open Subly Feed Directly",
                         color = Color.White,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp
                     )
                 }
 
-                // Expandable Option: Custom API Key
+                // Advanced / Optional Token or Key (Collapsed by default)
+                var showAdvancedOptions by remember { mutableStateOf(false) }
+                var oauthTokenText by remember { mutableStateOf("") }
+                var isOAuthSyncing by remember { mutableStateOf(false) }
+                var oauthError by remember { mutableStateOf<String?>(null) }
+
                 Text(
-                    text = if (showApiKeyInput) "Hide API Key Option" else "Have a YouTube API Key? Tap here",
-                    color = Color(0xFF94A3B8),
+                    text = if (showAdvancedOptions) "Hide Advanced Options" else "Advanced: Custom OAuth Token or API Key",
+                    color = Color(0xFF64748B),
                     fontSize = 12.sp,
                     textAlign = TextAlign.Center,
-                    fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showApiKeyInput = !showApiKeyInput }
+                        .clickable { showAdvancedOptions = !showAdvancedOptions }
                         .padding(vertical = 4.dp)
                 )
 
-                AnimatedVisibility(visible = showApiKeyInput) {
+                AnimatedVisibility(visible = showAdvancedOptions) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -308,13 +346,77 @@ fun ConnectScreen(
                             .padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        Text(
+                            text = "Optional: If you have a personal YouTube OAuth Bearer token or Data API key, you can enter it below:",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8),
+                            lineHeight = 16.sp
+                        )
+
+                        OutlinedTextField(
+                            value = oauthTokenText,
+                            onValueChange = {
+                                oauthTokenText = it
+                                oauthError = null
+                            },
+                            label = { Text("YouTube OAuth Access Token") },
+                            placeholder = { Text("ya29.a0...") },
+                            isError = oauthError != null,
+                            supportingText = {
+                                oauthError?.let {
+                                    Text(text = it, color = MaterialTheme.colorScheme.error)
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Button(
+                            onClick = {
+                                if (oauthTokenText.isBlank()) {
+                                    oauthError = "Please enter an OAuth Bearer token."
+                                    return@Button
+                                }
+                                isOAuthSyncing = true
+                                oauthError = null
+                                viewModel.syncSubscriptionsWithOAuth(oauthTokenText) { success, msg ->
+                                    isOAuthSyncing = false
+                                    if (success) {
+                                        onConnectedSuccess()
+                                    } else {
+                                        oauthError = msg
+                                    }
+                                }
+                            },
+                            enabled = !isOAuthSyncing,
+                            colors = ButtonDefaults.buttonColors(containerColor = SublyRedPrimary),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isOAuthSyncing) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Syncing…")
+                            } else {
+                                Icon(imageVector = Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Sync with Token")
+                            }
+                        }
+
+                        HorizontalDivider(color = Color(0xFF334155))
+
                         OutlinedTextField(
                             value = apiKeyText,
                             onValueChange = {
                                 apiKeyText = it
                                 apiKeyError = null
                             },
-                            label = { Text("YouTube Data API Key") },
+                            label = { Text("YouTube API Key (Optional)") },
                             placeholder = { Text("AIzaSy…") },
                             visualTransformation = if (apiKeyObscured) PasswordVisualTransformation() else VisualTransformation.None,
                             trailingIcon = {
@@ -347,17 +449,18 @@ fun ConnectScreen(
                                             name = "API Key Member",
                                             isDemo = false
                                         )
+                                        viewModel.syncNow()
                                         onConnectedSuccess()
                                     }
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = SublyRedPrimary),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(imageVector = Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Connect with Key")
+                            Text("Save API Key")
                         }
                     }
                 }

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.WatchLater
@@ -220,6 +221,17 @@ fun VideoCard(
                             onClick = {
                                 menuExpanded = false
                                 onAddToPlaylistClick(video)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Watch on YouTube", color = SublyRedPrimary, fontWeight = FontWeight.SemiBold) },
+                            leadingIcon = {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = SublyRedPrimary)
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=${video.id}"))
+                                context.startActivity(intent)
                             }
                         )
                         DropdownMenuItem(

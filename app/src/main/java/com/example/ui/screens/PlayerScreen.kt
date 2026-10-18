@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbUp
@@ -219,6 +220,16 @@ fun PlayerScreen(
                                 context.startActivity(Intent.createChooser(shareIntent, "Share Video"))
                             },
                             testTag = "player_share_button"
+                        )
+                        PlayerActionButton(
+                            icon = Icons.Default.PlayArrow,
+                            label = "YouTube",
+                            isSelected = false,
+                            onClick = {
+                                val ytIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=${video.id}"))
+                                context.startActivity(ytIntent)
+                            },
+                            testTag = "player_youtube_button"
                         )
                     }
 

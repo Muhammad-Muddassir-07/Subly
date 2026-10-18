@@ -144,7 +144,24 @@ fun HomeScreen(
                 feedVideos
             }
 
-            if (displayVideos.isEmpty()) {
+            if (isSyncing && feedVideos.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator(color = SublyRedPrimary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Fetching real YouTube feeds…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            } else if (displayVideos.isEmpty()) {
                 item {
                     EmptyFeedPlaceholder(
                         category = selectedCategory.displayName,

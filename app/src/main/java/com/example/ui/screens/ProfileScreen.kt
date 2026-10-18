@@ -24,9 +24,11 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -87,6 +89,10 @@ fun ProfileScreen(
     var isApiKeyObscured by remember { mutableStateOf(true) }
     var apiKeyError by remember { mutableStateOf<String?>(null) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
+
+    var customChannelInput by remember { mutableStateOf("") }
+    var isAddingCustomChannel by remember { mutableStateOf(false) }
+    var customChannelError by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = modifier
@@ -208,6 +214,93 @@ fun ProfileScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp
                             )
+                        }
+                    }
+                }
+            }
+
+            // YouTube Channel & Subscriptions Link Card
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Subscriptions,
+                                contentDescription = null,
+                                tint = SublyRedPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "YouTube Channel & Subscriptions",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Text(
+                            text = "Link your YouTube channel or any creator (@handle or URL) to immediately fetch all real video uploads into your feed.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = customChannelInput,
+                                onValueChange = {
+                                    customChannelInput = it
+                                    customChannelError = null
+                                },
+                                placeholder = { Text("@your_handle or @mkbhd") },
+                                singleLine = true,
+                                isError = customChannelError != null,
+                                supportingText = {
+                                    customChannelError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            Button(
+                                onClick = {
+                                    if (customChannelInput.isNotBlank()) {
+                                        isAddingCustomChannel = true
+                                        viewModel.addYouTubeChannel(customChannelInput.trim()) { success, msg ->
+                                            isAddingCustomChannel = false
+                                            if (success) {
+                                                customChannelInput = ""
+                                            } else {
+                                                customChannelError = msg
+                                            }
+                                        }
+                                    }
+                                },
+                                enabled = !isAddingCustomChannel && customChannelInput.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = SublyRedPrimary),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                if (isAddingCustomChannel) {
+                                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                } else {
+                                    Text("Link")
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = { viewModel.syncNow() },
+                            enabled = !isSyncing,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isSyncing) "Fetching Live YouTube Feeds…" else "Fetch Live YouTube Feeds", color = Color.White, fontSize = 13.sp)
                         }
                     }
                 }
@@ -373,6 +466,100 @@ fun ProfileScreen(
                                 modifier = Modifier.testTag("demo_mode_button")
                             ) {
                                 Text("Demo Mode")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // YouTube OAuth Bearer Token Sync Section
+            item {
+                var oauthInput by remember(preferences.oauthToken) { mutableStateOf(preferences.oauthToken) }
+                var oauthError by remember { mutableStateOf<String?>(null) }
+                var isOAuthSyncing by remember { mutableStateOf(false) }
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDone,
+                                contentDescription = null,
+                                tint = SublyRedPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "YouTube OAuth 2.0 Token",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "Fetch your real subscribed channels and video uploads directly from your authorized YouTube account using a Bearer token.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        OutlinedTextField(
+                            value = oauthInput,
+                            onValueChange = {
+                                oauthInput = it
+                                oauthError = null
+                            },
+                            label = { Text("YouTube OAuth Access Token") },
+                            placeholder = { Text("ya29.a0...") },
+                            isError = oauthError != null,
+                            supportingText = {
+                                oauthError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Button(
+                            onClick = {
+                                if (oauthInput.isBlank()) {
+                                    oauthError = "Please enter an OAuth Bearer token."
+                                    return@Button
+                                }
+                                isOAuthSyncing = true
+                                oauthError = null
+                                viewModel.syncSubscriptionsWithOAuth(oauthInput) { success, msg ->
+                                    isOAuthSyncing = false
+                                    if (!success) {
+                                        oauthError = msg
+                                    }
+                                }
+                            },
+                            enabled = !isOAuthSyncing,
+                            colors = ButtonDefaults.buttonColors(containerColor = SublyRedPrimary),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isOAuthSyncing) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Syncing with YouTube…")
+                            } else {
+                                Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Sync Subscriptions with Token")
                             }
                         }
                     }

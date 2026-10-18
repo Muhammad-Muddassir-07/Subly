@@ -9,6 +9,7 @@ import com.example.data.local.ChannelEntity
 import com.example.data.local.PlaylistEntity
 import com.example.data.local.PlaylistItemEntity
 import com.example.data.local.SearchHistoryEntity
+import com.example.data.local.DefaultSublyData
 import com.example.data.local.SublyDatabase
 import com.example.data.local.VideoEntity
 import com.example.data.local.WatchHistoryEntity
@@ -20,10 +21,14 @@ import com.example.data.models.Video
 import com.example.data.models.WatchHistoryItem
 import com.example.data.network.ApiResult
 import com.example.data.network.YouTubeApiClient
+import com.example.data.network.YouTubeFeedService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 private val Context.dataStore by preferencesDataStore(name = "subly_prefs")
 
@@ -41,9 +46,34 @@ class SublyRepository(private val context: Context) {
     private val historyDao = db.historyDao()
     private val searchHistoryDao = db.searchHistoryDao()
     private val apiClient = YouTubeApiClient()
+    private val feedService = YouTubeFeedService()
+
+    init {
+        CoroutineScope(Dispatchers.IO).launch {
+            videoDao.deleteLegacySampleVideos()
+            channelDao.deleteLegacySampleChannels()
+            channelDao.deleteFakeUserChannels()
+            ensureDatabaseSeeded()
+            syncFeed()
+        }
+    }
+
+    suspend fun ensureDatabaseSeeded() {
+        try {
+            videoDao.deleteLegacySampleVideos()
+            channelDao.deleteLegacySampleChannels()
+            channelDao.deleteFakeUserChannels()
+            if (channelDao.getCount() == 0) {
+                DefaultSublyData.populateInitialData(db)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SublyRepository", "Database seeding error: ${e.message}", e)
+        }
+    }
 
     // DataStore keys
     private val KEY_API_KEY = stringPreferencesKey("youtube_api_key")
+    private val KEY_OAUTH_TOKEN = stringPreferencesKey("youtube_oauth_token")
     private val KEY_DEMO_MODE = booleanPreferencesKey("is_demo_mode")
     private val KEY_AUTOPLAY = booleanPreferencesKey("auto_play")
     private val KEY_QUALITY = stringPreferencesKey("video_quality")
@@ -55,6 +85,7 @@ class SublyRepository(private val context: Context) {
     val userPreferencesFlow: Flow<UserPreferences> = context.dataStore.data.map { prefs ->
         UserPreferences(
             apiKey = prefs[KEY_API_KEY] ?: "",
+            oauthToken = prefs[KEY_OAUTH_TOKEN] ?: "",
             isDemoMode = prefs[KEY_DEMO_MODE] ?: true,
             autoPlayNext = prefs[KEY_AUTOPLAY] ?: true,
             videoQuality = prefs[KEY_QUALITY] ?: "1080p",
@@ -73,6 +104,82 @@ class SublyRepository(private val context: Context) {
             prefs[KEY_USER_NAME] = name
             prefs[KEY_USER_PHOTO] = photoUrl
             prefs[KEY_DEMO_MODE] = isDemo
+        }
+        ensureDatabaseSeeded()
+    }
+
+    suspend fun updateOAuthToken(oauthToken: String) {
+        val trimmed = oauthToken.trim()
+        context.dataStore.edit { prefs ->
+            prefs[KEY_OAUTH_TOKEN] = trimmed
+            if (trimmed.isNotEmpty()) {
+                prefs[KEY_DEMO_MODE] = false
+            }
+        }
+    }
+
+    /**
+     * Fetches user's subscribed YouTube channels using authorized OAuth token via Retrofit,
+     * saves channels, and syncs real live videos into local SQLite.
+     */
+    suspend fun syncSubscriptionsWithOAuth(oauthToken: String): ApiResult<Int> {
+        val cleanToken = oauthToken.trim()
+        if (cleanToken.isBlank()) {
+            return ApiResult.Error("OAuth authorization token is empty. Please provide a valid Bearer token.")
+        }
+
+        updateOAuthToken(cleanToken)
+
+        // Clear out legacy mock sample channels and videos before loading real YouTube data
+        videoDao.deleteLegacySampleVideos()
+        channelDao.deleteLegacySampleChannels()
+        channelDao.deleteFakeUserChannels()
+
+        return when (val result = apiClient.fetchUserSubscriptions(cleanToken)) {
+            is ApiResult.Success -> {
+                val channels = result.data
+                if (channels.isNotEmpty()) {
+                    channelDao.insertChannels(channels)
+
+                    // Fetch live videos for the newly imported subscriptions
+                    var newVideos = 0
+                    for (ch in channels) {
+                        try {
+                            val liveVideos = feedService.fetchChannelVideos(ch.id)
+                            if (liveVideos.isNotEmpty()) {
+                                videoDao.insertVideos(liveVideos)
+                                newVideos += liveVideos.size
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("SublyRepository", "Error syncing videos for ${ch.title}: ${e.message}")
+                        }
+                    }
+                    ApiResult.Success(channels.size)
+                } else {
+                    ApiResult.Success(0)
+                }
+            }
+            is ApiResult.Error -> {
+                result
+            }
+        }
+    }
+
+    suspend fun setupUserGoogleYouTubeData(
+        userId: String,
+        name: String,
+        email: String,
+        photoUrl: String
+    ) {
+        ensureDatabaseSeeded()
+        videoDao.deleteLegacySampleVideos()
+
+        val prefs = userPreferencesFlow.first()
+        if (prefs.oauthToken.isNotBlank()) {
+            syncSubscriptionsWithOAuth(prefs.oauthToken)
+        } else {
+            // Automatically fetch and sync live real YouTube videos for user without requiring API key
+            syncFeed()
         }
     }
 
@@ -335,23 +442,93 @@ class SublyRepository(private val context: Context) {
         searchHistoryDao.clearSearchHistory()
     }
 
-    // API Sync
+    // API & Live YouTube Feed Sync
     suspend fun syncFeed(): ApiResult<Int> {
+        ensureDatabaseSeeded()
         val prefs = userPreferencesFlow.first()
-        if (prefs.isDemoMode || prefs.apiKey.isBlank()) {
-            // Re-seed demo database if needed
+        var newVideosCount = 0
+
+        // 1. If API key is provided and not in demo mode, try official YouTube Data API
+        if (prefs.apiKey.isNotBlank() && !prefs.isDemoMode) {
+            when (val result = apiClient.fetchPopularVideos(prefs.apiKey)) {
+                is ApiResult.Success -> {
+                    if (result.data.isNotEmpty()) {
+                        videoDao.insertVideos(result.data)
+                        newVideosCount += result.data.size
+                    }
+                }
+                is ApiResult.Error -> {
+                    // Fall back to live RSS feed sync
+                }
+            }
+        }
+
+        // 2. Fetch live real-time videos from YouTube for all subscribed channels (no API key required!)
+        try {
+            var allChannels = channelDao.getAllChannels().first()
+            if (allChannels.isEmpty()) {
+                channelDao.insertChannels(DefaultSublyData.initialChannels)
+                allChannels = DefaultSublyData.initialChannels
+            }
+
+            for (ch in allChannels) {
+                val categoryName = when (ch.id) {
+                    "UCBJycsmduvYEL83R_U4JriQ", "UCXuqSBlHAE6Xw-yeJA0Tunw" -> "Tech"
+                    "UCHnyfMqiRRG1u-2MsSQLbXA" -> "Education"
+                    "UCsXVk37bltHxD1rDPwtNM8Q" -> "Science"
+                    "UCKy1dAqELo0zrOtPkf0eTMw" -> "Gaming"
+                    "UC2C_jShtL725hvbm1arSV9w" -> "Music"
+                    else -> "All"
+                }
+                val liveVideos = feedService.fetchChannelVideos(ch.id, categoryName = categoryName)
+                if (liveVideos.isNotEmpty()) {
+                    videoDao.insertVideos(liveVideos)
+                    newVideosCount += liveVideos.size
+                }
+            }
+
+            return ApiResult.Success(if (newVideosCount > 0) newVideosCount else videoDao.getCount())
+        } catch (e: Exception) {
+            android.util.Log.e("SublyRepository", "syncFeed error: ${e.message}", e)
             val count = videoDao.getCount()
             return ApiResult.Success(count)
         }
+    }
 
-        return when (val result = apiClient.fetchPopularVideos(prefs.apiKey)) {
-            is ApiResult.Success -> {
-                if (result.data.isNotEmpty()) {
-                    videoDao.insertVideos(result.data)
-                }
-                ApiResult.Success(result.data.size)
+    suspend fun addYouTubeChannel(handleOrUrl: String): Result<Channel> {
+        return try {
+            val entity = feedService.resolveChannel(handleOrUrl)
+                ?: return Result.failure(IllegalArgumentException("Could not find a YouTube channel for '$handleOrUrl'. Please verify the handle or URL."))
+
+            channelDao.insertChannel(entity.copy(isSubscribed = true))
+
+            val liveVideos = feedService.fetchChannelVideos(entity.id)
+            if (liveVideos.isNotEmpty()) {
+                videoDao.insertVideos(liveVideos)
             }
-            is ApiResult.Error -> result
+            Result.success(entity.toDomainModel().copy(isSubscribed = true))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun importYouTubeSubscriptions(rawTextOrCsv: String): Result<Int> {
+        return try {
+            val imported = feedService.parseAndImportSubscriptions(rawTextOrCsv)
+            if (imported.isEmpty()) {
+                return Result.failure(IllegalArgumentException("No valid YouTube channels found in input. Please check the channel handles or CSV."))
+            }
+
+            for (ch in imported) {
+                channelDao.insertChannel(ch.copy(isSubscribed = true))
+                val videos = feedService.fetchChannelVideos(ch.id)
+                if (videos.isNotEmpty()) {
+                    videoDao.insertVideos(videos)
+                }
+            }
+            Result.success(imported.size)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
@@ -360,20 +537,29 @@ class SublyRepository(private val context: Context) {
         val clean = sanitizeSearchQuery(query)
         if (clean.isEmpty()) return ApiResult.Success(emptyList())
 
-        if (prefs.isDemoMode || prefs.apiKey.isBlank()) {
-            val localMatches = videoDao.searchVideos(clean).first()
-            return ApiResult.Success(localMatches.map { it.toDomainModel() })
+        // 1. Try API key if configured
+        if (prefs.apiKey.isNotBlank() && !prefs.isDemoMode) {
+            val apiRes = apiClient.searchVideos(clean, prefs.apiKey)
+            if (apiRes is ApiResult.Success && apiRes.data.isNotEmpty()) {
+                videoDao.insertVideos(apiRes.data)
+                return ApiResult.Success(apiRes.data.map { it.toDomainModel() })
+            }
         }
 
-        return when (val result = apiClient.searchVideos(clean, prefs.apiKey)) {
-            is ApiResult.Success -> {
-                if (result.data.isNotEmpty()) {
-                    videoDao.insertVideos(result.data)
-                }
-                ApiResult.Success(result.data.map { it.toDomainModel() })
+        // 2. Live YouTube search via YouTube feed service
+        try {
+            val liveResults = feedService.searchVideos(clean)
+            if (liveResults.isNotEmpty()) {
+                videoDao.insertVideos(liveResults)
+                return ApiResult.Success(liveResults.map { it.toDomainModel() })
             }
-            is ApiResult.Error -> result
+        } catch (e: Exception) {
+            // fallback to local
         }
+
+        // 3. Fallback to local database matches
+        val localMatches = videoDao.searchVideos(clean).first()
+        return ApiResult.Success(localMatches.map { it.toDomainModel() })
     }
 
     private fun VideoEntity.toDomainModel(): Video {

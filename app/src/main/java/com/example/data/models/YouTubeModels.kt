@@ -61,6 +61,7 @@ data class Comment(
 
 data class UserPreferences(
     val apiKey: String = "",
+    val oauthToken: String = "",
     val isDemoMode: Boolean = true,
     val autoPlayNext: Boolean = true,
     val videoQuality: String = "1080p",

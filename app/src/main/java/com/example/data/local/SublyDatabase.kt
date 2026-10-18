@@ -39,20 +39,19 @@ abstract class SublyDatabase : RoomDatabase() {
                     SublyDatabase::class.java,
                     "subly_database.db"
                 )
-                    .addCallback(object : Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) {
-                            super.onCreate(db)
-                            // Populate default data on background thread
-                            CoroutineScope(Dispatchers.IO).launch {
-                                INSTANCE?.let { database ->
-                                    DefaultSublyData.populateInitialData(database)
-                                }
-                            }
-                        }
-                    })
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
+
+                // Ensure initial seed data is populated on background thread
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        DefaultSublyData.populateInitialData(instance)
+                    } catch (e: Exception) {
+                        android.util.Log.e("SublyDatabase", "Error populating initial data: ${e.message}", e)
+                    }
+                }
+
                 instance
             }
         }
