@@ -36,7 +36,7 @@ class YouTubeFeedService(
 
             val request = Request.Builder()
                 .url(url)
-                .header("User-Agent", USER_AGENT)
+                .header("User-Agent", FEED_USER_AGENT)
                 .build()
 
             try {
@@ -110,28 +110,46 @@ class YouTubeFeedService(
                 }
                 val html = response.body?.string() ?: return@withContext null
 
-                // Extract channelId
-                val channelIdPattern = Pattern.compile(""""channelId":"(UC[a-zA-Z0-9_-]{22})"""")
+                // Extract channelId using multiple robust patterns (externalId is current YouTube standard)
+                val channelIdPattern = Pattern.compile(""""externalId":"(UC[a-zA-Z0-9_-]{22})"""")
                 val channelIdMatcher = channelIdPattern.matcher(html)
-                val channelId = if (channelIdMatcher.find()) channelIdMatcher.group(1) else null
+                val channelId = if (channelIdMatcher.find()) {
+                    channelIdMatcher.group(1)
+                } else {
+                    val fallbackPattern = Pattern.compile("""(?:/channel/|"channelId":")(UC[a-zA-Z0-9_-]{22})""")
+                    val fallbackMatcher = fallbackPattern.matcher(html)
+                    if (fallbackMatcher.find()) fallbackMatcher.group(1) else null
+                }
 
                 if (channelId == null) {
                     Log.w(TAG, "Could not extract channelId from HTML for $handle")
                     return@withContext null
                 }
 
-                // Extract channel title
-                val titlePattern = Pattern.compile("""<title>([^-<]+)""")
-                val titleMatcher = titlePattern.matcher(html)
-                val title = if (titleMatcher.find()) titleMatcher.group(1).trim() else handle.removePrefix("@")
-
-                // Extract avatar thumbnail
-                val avatarPattern = Pattern.compile(""""avatar":\{"thumbnails":\[\{"url":"([^"]+)"""")
-                val avatarMatcher = avatarPattern.matcher(html)
-                val avatarUrl = if (avatarMatcher.find()) {
-                    avatarMatcher.group(1).replace("&amp;", "&")
+                // Extract channel title (check og:title first, then title tag)
+                val ogTitlePattern = Pattern.compile("""<meta property="og:title" content="([^"]+)"""")
+                val ogTitleMatcher = ogTitlePattern.matcher(html)
+                val title = if (ogTitleMatcher.find()) {
+                    ogTitleMatcher.group(1).trim()
                 } else {
-                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+                    val titlePattern = Pattern.compile("""<title>([^-<]+)""")
+                    val titleMatcher = titlePattern.matcher(html)
+                    if (titleMatcher.find()) titleMatcher.group(1).trim() else handle.removePrefix("@")
+                }
+
+                // Extract avatar thumbnail (check og:image first, then avatar thumbnails)
+                val ogImagePattern = Pattern.compile("""<meta property="og:image" content="([^"]+)"""")
+                val ogImageMatcher = ogImagePattern.matcher(html)
+                val avatarUrl = if (ogImageMatcher.find()) {
+                    ogImageMatcher.group(1).replace("&amp;", "&")
+                } else {
+                    val avatarPattern = Pattern.compile(""""avatar":\{"thumbnails":\[\{"url":"([^"]+)"""")
+                    val avatarMatcher = avatarPattern.matcher(html)
+                    if (avatarMatcher.find()) {
+                        avatarMatcher.group(1).replace("&amp;", "&")
+                    } else {
+                        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+                    }
                 }
 
                 // Extract banner if present
@@ -399,6 +417,7 @@ class YouTubeFeedService(
 
     companion object {
         private const val TAG = "YouTubeFeedService"
-        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+        private const val FEED_USER_AGENT = "Subly/1.0 (Android Feed Reader)"
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 }

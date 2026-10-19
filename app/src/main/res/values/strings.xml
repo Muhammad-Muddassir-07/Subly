@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Subly</string>
-    <string name="default_web_client_id">your-web-client-id.apps.googleusercontent.com</string>
+    <string name="default_web_client_id">631622080752-j1rc9r5jcdqgffvugihn9i5drkpetvj1.apps.googleusercontent.com</string>
     <string name="nav_home">Home</string>
     <string name="nav_subscriptions">Subscriptions</string>
     <string name="nav_search">Search</string>
