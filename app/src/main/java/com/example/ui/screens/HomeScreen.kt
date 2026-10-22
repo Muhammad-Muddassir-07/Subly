@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -35,6 +36,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +55,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -165,6 +169,9 @@ fun HomeScreen(
                 item {
                     EmptyFeedPlaceholder(
                         category = selectedCategory.displayName,
+                        onAddChannel = { handleOrUrl, callback ->
+                            viewModel.addYouTubeChannel(handleOrUrl, callback)
+                        },
                         onRefresh = { viewModel.syncNow() }
                     )
                 }
@@ -397,48 +404,132 @@ fun HeroFeaturedCard(
 @Composable
 fun EmptyFeedPlaceholder(
     category: String,
+    onAddChannel: (String, (Boolean, String) -> Unit) -> Unit,
     onRefresh: () -> Unit
 ) {
+    var channelInput by remember { mutableStateOf("") }
+    var isAdding by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+    var isError by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 48.dp),
+            .padding(horizontal = 16.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceVariant,
             shape = CircleShape,
-            modifier = Modifier.size(64.dp)
+            modifier = Modifier.size(56.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.PlayArrow,
                     contentDescription = null,
                     tint = SublyRedPrimary,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
         }
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
         Text(
-            text = "No videos in $category yet",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            text = "Welcome to Your Subly Feed",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onSurface
         )
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "Pull to sync with YouTube or explore other categories",
+            text = "Add your favorite YouTube channels below to load their real, live videos.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = onRefresh,
-            colors = ButtonDefaults.buttonColors(containerColor = SublyRedPrimary)
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(imageVector = Icons.Default.Refresh, contentDescription = null)
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Sync Feed")
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Add YouTube Channel",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                OutlinedTextField(
+                    value = channelInput,
+                    onValueChange = {
+                        channelInput = it
+                        statusMessage = null
+                    },
+                    placeholder = { Text("Enter channel name or @handle", fontSize = 13.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                statusMessage?.let {
+                    Text(
+                        text = it,
+                        fontSize = 12.sp,
+                        color = if (isError) MaterialTheme.colorScheme.error else SublyRedPrimary
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        if (channelInput.isNotBlank()) {
+                            isAdding = true
+                            statusMessage = null
+                            onAddChannel(channelInput.trim()) { success, msg ->
+                                isAdding = false
+                                statusMessage = msg
+                                isError = !success
+                                if (success) {
+                                    channelInput = ""
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isAdding && channelInput.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = SublyRedPrimary),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isAdding) {
+                        CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Fetching live videos…", fontSize = 13.sp)
+                    } else {
+                        Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Add Channel & Load Videos", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = onRefresh,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Sync Feed", fontSize = 13.sp)
+            }
         }
     }
 }

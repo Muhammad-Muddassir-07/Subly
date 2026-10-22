@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -89,6 +92,16 @@ fun SubscriptionsScreen(
     var showImportModal by remember { mutableStateOf(false) }
     var showOAuthTokenModal by remember { mutableStateOf(false) }
 
+    BackHandler(enabled = selectedChannelId != null) {
+        viewModel.setSubscriptionChannelFilter(null)
+    }
+
+    LaunchedEffect(Unit) {
+        if (videos.isEmpty()) {
+            viewModel.syncNow()
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -109,7 +122,7 @@ fun SubscriptionsScreen(
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "${subscribedChannels.size} channels followed",
+                    text = "${subscribedChannels.size} channels followed • ${videos.size} uploads",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -129,7 +142,9 @@ fun SubscriptionsScreen(
 
                 IconButton(
                     onClick = { viewModel.syncNow() },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("sync_subscriptions_button")
                 ) {
                     if (isSyncing) {
                         CircularProgressIndicator(
@@ -252,6 +267,16 @@ fun SubscriptionsScreen(
             }
         }
 
+        // Active background sync progress indicator
+        if (isSyncing && videos.isNotEmpty()) {
+            LinearProgressIndicator(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp),
+                color = SublyRedPrimary
+            )
+        }
+
         // Subscriptions Video Feed
         LazyColumn(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp, top = 8.dp),
@@ -280,7 +305,7 @@ fun SubscriptionsScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 36.dp, horizontal = 16.dp),
+                            .padding(vertical = 24.dp, horizontal = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Surface(
@@ -299,33 +324,33 @@ fun SubscriptionsScreen(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (subscribedChannels.isEmpty()) "No Subscribed Channels" else "No Recent Uploads",
+                            text = if (subscribedChannels.isEmpty()) "No Subscribed Channels" else "No Recent Uploads Loaded",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = if (subscribedChannels.isEmpty())
-                                "Sync your real subscriptions with a YouTube OAuth Token, or add creators by handle (@mkbhd, @veritasium) to start watching."
+                                "Subscribe to your favorite creators by handle (@mkbhd, @veritasium) or follow recommended channels below."
                             else
-                                "Your subscribed channels don't have new uploads right now. Pull down to sync or add more channels.",
+                                "Tap 'Sync Feed Now' to fetch the newest uploads directly from your followed channels.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 16.dp)
                         )
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Button(
-                                onClick = { showOAuthTokenModal = true },
+                                onClick = { viewModel.syncNow() },
                                 colors = ButtonDefaults.buttonColors(containerColor = SublyRedPrimary)
                             ) {
-                                Icon(imageVector = Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(imageVector = Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("OAuth Sync")
+                                Text("Sync Feed Now")
                             }
                             OutlinedButton(
                                 onClick = { showAddChannelModal = true }
@@ -333,6 +358,62 @@ fun SubscriptionsScreen(
                                 Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("Add Channel")
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(28.dp))
+
+                        // Quick Follow Popular Creators Section
+                        Text(
+                            text = "Recommended Creators to Follow",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.align(Alignment.Start)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        val recommendedCreators = listOf(
+                            Triple("Marques Brownlee", "@mkbhd", "Tech & Mobile"),
+                            Triple("Veritasium", "@veritasium", "Science & Discovery"),
+                            Triple("Fireship", "@fireship", "Code & Dev Trends"),
+                            Triple("Linus Tech Tips", "@LinusTechTips", "Hardware & PC"),
+                            Triple("Kurzgesagt – In a Nutshell", "@Kurzgesagt", "Animated Science"),
+                            Triple("MrBeast", "@MrBeast", "Entertainment")
+                        )
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            recommendedCreators.forEach { (name, handle, tag) ->
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(text = name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            Text(text = "$handle • $tag", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Button(
+                                            onClick = {
+                                                viewModel.addYouTubeChannel(handle) { _, _ -> }
+                                            },
+                                            shape = RoundedCornerShape(16.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = SublyRedPrimary),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("+ Follow", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

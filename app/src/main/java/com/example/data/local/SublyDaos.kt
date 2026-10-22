@@ -9,10 +9,10 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface VideoDao {
-    @Query("SELECT * FROM videos ORDER BY publishedAt DESC")
+    @Query("SELECT v.* FROM videos v INNER JOIN channels c ON v.channelId = c.id WHERE c.isSubscribed = 1 ORDER BY v.publishedAt DESC")
     fun getAllVideos(): Flow<List<VideoEntity>>
 
-    @Query("SELECT * FROM videos WHERE category = :category ORDER BY publishedAt DESC")
+    @Query("SELECT v.* FROM videos v INNER JOIN channels c ON v.channelId = c.id WHERE c.isSubscribed = 1 AND v.category = :category ORDER BY v.publishedAt DESC")
     fun getVideosByCategory(category: String): Flow<List<VideoEntity>>
 
     @Query("SELECT * FROM videos WHERE id = :id")
@@ -48,16 +48,16 @@ interface VideoDao {
     @Query("SELECT COUNT(*) FROM videos")
     suspend fun getCount(): Int
 
-    @Query("DELETE FROM videos WHERE id LIKE 'v1_%' OR id LIKE 'v2_%' OR id LIKE 'v3_%' OR id LIKE 'v4_%' OR id LIKE 'v5_%' OR id LIKE 'v6_%'")
+    @Query("DELETE FROM videos WHERE id LIKE 'mock_%' OR id LIKE 'v_fake_%' OR id LIKE 'sample_%'")
     suspend fun deleteLegacySampleVideos()
 }
 
 @Dao
 interface ChannelDao {
-    @Query("DELETE FROM channels WHERE id = 'UCvjgXvBlbQiydffZU7m1_aw' OR id = 'UC7_gcs09iThXybpVgjHZ_7g'")
+    @Query("DELETE FROM channels WHERE id LIKE 'mock_%' OR id LIKE 'sample_%'")
     suspend fun deleteLegacySampleChannels()
 
-    @Query("DELETE FROM channels WHERE id LIKE 'UC_user_%'")
+    @Query("DELETE FROM channels WHERE id LIKE 'UC_fake_%'")
     suspend fun deleteFakeUserChannels()
 
     @Query("DELETE FROM channels WHERE id = :id")

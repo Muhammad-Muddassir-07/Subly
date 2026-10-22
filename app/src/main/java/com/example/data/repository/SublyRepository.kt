@@ -178,7 +178,28 @@ class SublyRepository(private val context: Context) {
         if (prefs.oauthToken.isNotBlank()) {
             syncSubscriptionsWithOAuth(prefs.oauthToken)
         } else {
-            // Automatically fetch and sync live real YouTube videos for user without requiring API key
+            // Automatically resolve and subscribe to the user's YouTube channel/content if available
+            try {
+                val emailHandle = email.substringBefore("@").replace(".", "").trim()
+                val candidateQueries = listOf(name, emailHandle)
+                for (query in candidateQueries) {
+                    if (query.isNotBlank()) {
+                        val userChannel = feedService.resolveChannel(query)
+                        if (userChannel != null) {
+                            channelDao.insertChannel(userChannel.copy(isSubscribed = true))
+                            val userVideos = feedService.fetchChannelVideos(userChannel.id)
+                            if (userVideos.isNotEmpty()) {
+                                videoDao.insertVideos(userVideos)
+                            }
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("SublyRepository", "Could not auto-resolve user channel: ${e.message}")
+            }
+
+            // Sync live real YouTube videos for all followed channels
             syncFeed()
         }
     }
@@ -465,22 +486,18 @@ class SublyRepository(private val context: Context) {
 
         // 2. Fetch live real-time videos from YouTube for all subscribed channels (no API key required!)
         try {
-            var allChannels = channelDao.getAllChannels().first()
-            if (allChannels.isEmpty()) {
-                channelDao.insertChannels(DefaultSublyData.initialChannels)
-                allChannels = DefaultSublyData.initialChannels
+            ensureDatabaseSeeded()
+            var subscribedChannels = channelDao.getSubscribedChannels().first()
+            if (subscribedChannels.isEmpty()) {
+                DefaultSublyData.populateInitialData(db)
+                subscribedChannels = channelDao.getSubscribedChannels().first()
             }
 
-            for (ch in allChannels) {
-                val categoryName = when (ch.id) {
-                    "UCBJycsmduvYEL83R_U4JriQ", "UCXuqSBlHAE6Xw-yeJA0Tunw" -> "Tech"
-                    "UCHnyfMqiRRG1u-2MsSQLbXA" -> "Education"
-                    "UCsXVk37bltHxD1rDPwtNM8Q" -> "Science"
-                    "UCKy1dAqELo0zrOtPkf0eTMw" -> "Gaming"
-                    "UC2C_jShtL725hvbm1arSV9w" -> "Music"
-                    else -> "All"
-                }
-                val liveVideos = feedService.fetchChannelVideos(ch.id, categoryName = categoryName)
+            for (ch in subscribedChannels) {
+                val liveVideos = feedService.fetchChannelVideos(
+                    channelId = ch.id,
+                    channelAvatarUrl = ch.avatarUrl
+                )
                 if (liveVideos.isNotEmpty()) {
                     videoDao.insertVideos(liveVideos)
                     newVideosCount += liveVideos.size
@@ -500,13 +517,17 @@ class SublyRepository(private val context: Context) {
             val entity = feedService.resolveChannel(handleOrUrl)
                 ?: return Result.failure(IllegalArgumentException("Could not find a YouTube channel for '$handleOrUrl'. Please verify the handle or URL."))
 
-            channelDao.insertChannel(entity.copy(isSubscribed = true))
+            val subscribedEntity = entity.copy(isSubscribed = true)
+            channelDao.insertChannel(subscribedEntity)
 
-            val liveVideos = feedService.fetchChannelVideos(entity.id)
+            val liveVideos = feedService.fetchChannelVideos(
+                channelId = subscribedEntity.id,
+                channelAvatarUrl = subscribedEntity.avatarUrl
+            )
             if (liveVideos.isNotEmpty()) {
                 videoDao.insertVideos(liveVideos)
             }
-            Result.success(entity.toDomainModel().copy(isSubscribed = true))
+            Result.success(subscribedEntity.toDomainModel())
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -541,7 +562,6 @@ class SublyRepository(private val context: Context) {
         if (prefs.apiKey.isNotBlank() && !prefs.isDemoMode) {
             val apiRes = apiClient.searchVideos(clean, prefs.apiKey)
             if (apiRes is ApiResult.Success && apiRes.data.isNotEmpty()) {
-                videoDao.insertVideos(apiRes.data)
                 return ApiResult.Success(apiRes.data.map { it.toDomainModel() })
             }
         }
@@ -550,7 +570,6 @@ class SublyRepository(private val context: Context) {
         try {
             val liveResults = feedService.searchVideos(clean)
             if (liveResults.isNotEmpty()) {
-                videoDao.insertVideos(liveResults)
                 return ApiResult.Success(liveResults.map { it.toDomainModel() })
             }
         } catch (e: Exception) {

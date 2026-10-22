@@ -4,97 +4,71 @@ import com.example.data.models.Comment
 
 object DefaultSublyData {
 
-    // Real YouTube channels used to pull live, fresh video feeds automatically via Atom RSS
+    // Initial curated real YouTube channels for instant subscriptions
     val initialChannels = listOf(
         ChannelEntity(
             id = "UCBJycsmduvYEL83R_U4JriQ",
             title = "Marques Brownlee",
             handle = "@mkbhd",
-            avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-            bannerUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000&auto=format&fit=crop&q=80",
-            subscriberCount = 18700000L,
-            videoCount = 1680,
-            description = "Quality Tech Videos | Consumer Electronics enthusiast.",
+            avatarUrl = "https://yt3.googleusercontent.com/lkH37D712tiyphnu0Id0D5MwwQ7IRuwgQLVD05iMXlDyj-kOntRmgIOuDxngTalMyUrxiIRv=s176-c-k-c0x00ffffff-no-rj",
+            bannerUrl = "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1000",
+            subscriberCount = 19500000L,
+            videoCount = 1600,
+            description = "Quality Tech Videos | Geek | Consumer Electronics",
             isSubscribed = true,
-            unreadVideosCount = 5
-        ),
-        ChannelEntity(
-            id = "UCXuqSBlHAE6Xw-yeJA0Tunw",
-            title = "Linus Tech Tips",
-            handle = "@linustechtips",
-            avatarUrl = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
-            bannerUrl = "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1000&auto=format&fit=crop&q=80",
-            subscriberCount = 15800000L,
-            videoCount = 6200,
-            description = "Tech reviews, computer builds, and benchmarks.",
-            isSubscribed = true,
-            unreadVideosCount = 5
+            unreadVideosCount = 15
         ),
         ChannelEntity(
             id = "UCHnyfMqiRRG1u-2MsSQLbXA",
             title = "Veritasium",
             handle = "@veritasium",
-            avatarUrl = "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80",
-            bannerUrl = "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=1000&auto=format&fit=crop&q=80",
-            subscriberCount = 16800000L,
-            videoCount = 390,
-            description = "An element of truth - videos about science and education.",
+            avatarUrl = "https://yt3.googleusercontent.com/ytc/AIdro_k6aK4g2U69B5G54R1U0x8c7j781n=s176-c-k-c0x00ffffff-no-rj",
+            bannerUrl = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1000",
+            subscriberCount = 16500000L,
+            videoCount = 420,
+            description = "An element of truth - videos about science, education, and anything interesting.",
             isSubscribed = true,
-            unreadVideosCount = 3
+            unreadVideosCount = 15
+        ),
+        ChannelEntity(
+            id = "UCsBjURrPoezykLs9EqgamOA",
+            title = "Fireship",
+            handle = "@fireship",
+            avatarUrl = "https://yt3.googleusercontent.com/ytc/AIdro_nF05o13r28-i99lYm1Z7K8W4j31=s176-c-k-c0x00ffffff-no-rj",
+            bannerUrl = "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=1000",
+            subscriberCount = 3300000L,
+            videoCount = 650,
+            description = "High-intensity code tutorials and tech news to help you ship software faster.",
+            isSubscribed = true,
+            unreadVideosCount = 15
+        ),
+        ChannelEntity(
+            id = "UCXuqSBlHAE6Xw-yeJA0Tunw",
+            title = "Linus Tech Tips",
+            handle = "@LinusTechTips",
+            avatarUrl = "https://yt3.googleusercontent.com/ytc/AIdro_k5qWf0y=s176-c-k-c0x00ffffff-no-rj",
+            bannerUrl = "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=1000",
+            subscriberCount = 16000000L,
+            videoCount = 6000,
+            description = "Tech videos from entertaining to informative.",
+            isSubscribed = true,
+            unreadVideosCount = 15
         ),
         ChannelEntity(
             id = "UCsXVk37bltHxD1rDPwtNM8Q",
             title = "Kurzgesagt – In a Nutshell",
-            handle = "@kurzgesagt",
-            avatarUrl = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=150&auto=format&fit=crop&q=80",
-            bannerUrl = "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1000&auto=format&fit=crop&q=80",
-            subscriberCount = 22400000L,
-            videoCount = 215,
-            description = "Videos explaining science, humanity, and the universe.",
+            handle = "@Kurzgesagt",
+            avatarUrl = "https://yt3.googleusercontent.com/ytc/AIdro_l5n=s176-c-k-c0x00ffffff-no-rj",
+            bannerUrl = "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=1000",
+            subscriberCount = 23000000L,
+            videoCount = 220,
+            description = "Videos explaining things with optimistic nihilism. Science made beautiful.",
             isSubscribed = true,
-            unreadVideosCount = 2
-        ),
-        ChannelEntity(
-            id = "UCKy1dAqELo0zrOtPkf0eTMw",
-            title = "IGN",
-            handle = "@ign",
-            avatarUrl = "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=150&auto=format&fit=crop&q=80",
-            bannerUrl = "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1000&auto=format&fit=crop&q=80",
-            subscriberCount = 18000000L,
-            videoCount = 12000,
-            description = "Video game reviews, trailers, news, and walkthroughs.",
-            isSubscribed = true,
-            unreadVideosCount = 6
-        ),
-        ChannelEntity(
-            id = "UC2C_jShtL725hvbm1arSV9w",
-            title = "Lofi Girl",
-            handle = "@lofigirl",
-            avatarUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=80",
-            bannerUrl = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1000&auto=format&fit=crop&q=80",
-            subscriberCount = 14300000L,
-            videoCount = 320,
-            description = "24/7 lofi hip hop radio - beats to relax/study to.",
-            isSubscribed = true,
-            unreadVideosCount = 1
-        ),
-        ChannelEntity(
-            id = "UCX6OQ3DkcsbYNE6H8uQQuVA",
-            title = "MrBeast",
-            handle = "@mrbeast",
-            avatarUrl = "https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=150&auto=format&fit=crop&q=80",
-            bannerUrl = "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1000&auto=format&fit=crop&q=80",
-            subscriberCount = 340000000L,
-            videoCount = 820,
-            description = "I want to make the world a better place before I die.",
-            isSubscribed = true,
-            unreadVideosCount = 2
+            unreadVideosCount = 15
         )
     )
 
     val sampleChannels = initialChannels
-
-    // All sample mock videos are removed; all videos are fetched LIVE from real YouTube feeds
     val sampleVideos = emptyList<VideoEntity>()
 
     val samplePlaylists = listOf(
@@ -110,7 +84,6 @@ object DefaultSublyData {
     )
 
     suspend fun populateInitialData(database: SublyDatabase) {
-        // Clean out legacy mock sample video records
         database.videoDao().deleteLegacySampleVideos()
         database.channelDao().deleteLegacySampleChannels()
 

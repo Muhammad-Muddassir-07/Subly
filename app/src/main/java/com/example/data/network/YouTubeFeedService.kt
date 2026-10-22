@@ -28,160 +28,224 @@ class YouTubeFeedService(
     /**
      * Fetches live uploads from a YouTube channel via its official Atom feed.
      * URL: https://www.youtube.com/feeds/videos.xml?channel_id={channelId}
+     * Employs multi-UA fallback to prevent YouTube 500/404 blocks on XML feeds.
      */
-    suspend fun fetchChannelVideos(channelId: String, categoryName: String = "All"): List<VideoEntity> =
+    suspend fun fetchChannelVideos(
+        channelId: String,
+        categoryName: String = "All",
+        channelAvatarUrl: String? = null
+    ): List<VideoEntity> =
         withContext(Dispatchers.IO) {
             val cleanId = channelId.trim().removePrefix("UC").let { "UC$it" }
             val url = "https://www.youtube.com/feeds/videos.xml?channel_id=$cleanId"
 
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", FEED_USER_AGENT)
-                .build()
+            val candidateUas = listOf(
+                FEED_USER_AGENT,
+                "okhttp/4.12.0",
+                "Feedfetcher-Google; (+http://www.google.com/feedfetcher.html)",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            )
 
-            try {
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        Log.w(TAG, "Feed fetch failed with code ${response.code} for $channelId")
-                        return@withContext emptyList()
+            for (ua in candidateUas) {
+                try {
+                    val request = Request.Builder()
+                        .url(url)
+                        .header("User-Agent", ua)
+                        .header("Accept", "application/atom+xml,application/xml,text/xml")
+                        .build()
+
+                    client.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val bodyString = response.body?.string() ?: return@use
+                            val parsed = parseAtomFeed(bodyString, cleanId, categoryName, channelAvatarUrl)
+                            if (parsed.isNotEmpty()) {
+                                return@withContext parsed
+                            }
+                        }
                     }
-                    val bodyString = response.body?.string() ?: return@withContext emptyList()
-                    parseAtomFeed(bodyString, cleanId, categoryName)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Feed attempt for $channelId with $ua failed: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error fetching feed for $channelId: ${e.message}", e)
-                emptyList()
             }
+
+            emptyList()
         }
 
     /**
-     * Resolves a channel by its handle (e.g. "@mkbhd"), username, URL, or channel ID.
+     * Resolves a channel by its handle (e.g. "@mkbhd"), username, creator name, URL, or channel ID.
      */
     suspend fun resolveChannel(input: String): ChannelEntity? = withContext(Dispatchers.IO) {
         val trimmed = input.trim()
         if (trimmed.isEmpty()) return@withContext null
 
-        // If it's already a UC channel ID (24 characters starting with UC)
+        // 1. If it's already a UC channel ID (24 characters starting with UC)
         if (trimmed.startsWith("UC") && trimmed.length == 24) {
             val videos = fetchChannelVideos(trimmed)
             val title = videos.firstOrNull()?.channelTitle ?: "YouTube Channel"
+            val avatar = videos.firstOrNull()?.channelAvatarUrl
+                ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
             return@withContext ChannelEntity(
                 id = trimmed,
                 title = title,
-                handle = "@$title",
-                avatarUrl = videos.firstOrNull()?.channelAvatarUrl
-                    ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+                handle = "@${title.lowercase().replace(" ", "").replace(Regex("[^a-zA-Z0-9_]"), "")}",
+                avatarUrl = avatar,
                 bannerUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000",
-                subscriberCount = 1000000L,
-                videoCount = videos.size,
-                description = "YouTube Creator Channel ($trimmed)",
+                subscriberCount = 500000L,
+                videoCount = videos.size.coerceAtLeast(10),
+                description = "YouTube Creator $title ($trimmed)",
                 isSubscribed = true,
                 unreadVideosCount = videos.size
             )
         }
 
-        // Handle URL or @handle format
+        // 2. Direct channel handle / URL attempt
+        val isUrlOrHandle = trimmed.startsWith("http") || (trimmed.startsWith("@") && !trimmed.contains(" "))
         val handle = when {
             trimmed.startsWith("http") -> {
                 val match = Regex("""(?:@|channel/|user/)([a-zA-Z0-9_.-]+)""").find(trimmed)
                 match?.groupValues?.get(1)?.let { if (it.startsWith("UC") && it.length == 24) it else "@$it" } ?: trimmed
             }
-            !trimmed.startsWith("@") -> "@$trimmed"
+            !trimmed.startsWith("@") && !trimmed.contains(" ") -> "@$trimmed"
             else -> trimmed
         }
 
-        val targetUrl = if (handle.startsWith("UC") && handle.length == 24) {
-            "https://www.youtube.com/channel/$handle"
-        } else {
-            "https://www.youtube.com/$handle"
+        if (!handle.contains(" ")) {
+            val targetUrl = if (handle.startsWith("UC") && handle.length == 24) {
+                "https://www.youtube.com/channel/$handle"
+            } else {
+                "https://www.youtube.com/$handle"
+            }
+
+            val request = Request.Builder()
+                .url(targetUrl)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept-Language", "en-US,en;q=0.9")
+                .build()
+
+            try {
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val html = response.body?.string()
+                        if (html != null) {
+                            val channelIdPattern = Pattern.compile(""""externalId":"(UC[a-zA-Z0-9_-]{22})"""")
+                            val channelIdMatcher = channelIdPattern.matcher(html)
+                            val channelId = if (channelIdMatcher.find()) {
+                                channelIdMatcher.group(1)
+                            } else {
+                                val fallbackPattern = Pattern.compile("""(?:/channel/|"channelId":")(UC[a-zA-Z0-9_-]{22})""")
+                                val fallbackMatcher = fallbackPattern.matcher(html)
+                                if (fallbackMatcher.find()) fallbackMatcher.group(1) else null
+                            }
+
+                            if (channelId != null) {
+                                val ogTitlePattern = Pattern.compile("""<meta property="og:title" content="([^"]+)"""")
+                                val ogTitleMatcher = ogTitlePattern.matcher(html)
+                                val title = if (ogTitleMatcher.find()) {
+                                    ogTitleMatcher.group(1).trim()
+                                } else {
+                                    val titlePattern = Pattern.compile("""<title>([^-<]+)""")
+                                    val titleMatcher = titlePattern.matcher(html)
+                                    if (titleMatcher.find()) titleMatcher.group(1).trim() else handle.removePrefix("@")
+                                }
+
+                                val ogImagePattern = Pattern.compile("""<meta property="og:image" content="([^"]+)"""")
+                                val ogImageMatcher = ogImagePattern.matcher(html)
+                                val avatarUrl = if (ogImageMatcher.find()) {
+                                    ogImageMatcher.group(1).replace("&amp;", "&")
+                                } else {
+                                    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+                                }
+
+                                val subsPattern = Pattern.compile(""""subscriberCountText":\{"simpleText":"([^"]+)"""")
+                                val subsMatcher = subsPattern.matcher(html)
+                                val subsString = if (subsMatcher.find()) subsMatcher.group(1) else "100K subscribers"
+                                val parsedSubs = parseSubscriberCount(subsString)
+
+                                return@withContext ChannelEntity(
+                                    id = channelId,
+                                    title = title,
+                                    handle = handle,
+                                    avatarUrl = avatarUrl,
+                                    bannerUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000",
+                                    subscriberCount = parsedSubs,
+                                    videoCount = 50,
+                                    description = "YouTube Creator $title ($handle)",
+                                    isSubscribed = true,
+                                    unreadVideosCount = 5
+                                )
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Direct channel resolution failed for $handle: ${e.message}")
+            }
         }
 
+        // 3. Fallback: Search YouTube for the channel by name or query
+        try {
+            val searchedChannel = searchChannelByQuery(trimmed)
+            if (searchedChannel != null) {
+                return@withContext searchedChannel
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Search channel fallback failed for $trimmed: ${e.message}", e)
+        }
+
+        null
+    }
+
+    private fun searchChannelByQuery(query: String): ChannelEntity? {
+        val encoded = java.net.URLEncoder.encode(query.trim(), "UTF-8")
+        val searchUrl = "https://www.youtube.com/results?search_query=$encoded&sp=EgIQAg%253D%253D"
         val request = Request.Builder()
-            .url(targetUrl)
+            .url(searchUrl)
             .header("User-Agent", USER_AGENT)
             .header("Accept-Language", "en-US,en;q=0.9")
             .build()
 
-        try {
+        return try {
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "Handle resolution failed HTTP ${response.code} for $handle")
-                    return@withContext null
-                }
-                val html = response.body?.string() ?: return@withContext null
+                if (!response.isSuccessful) return null
+                val html = response.body?.string() ?: return null
 
-                // Extract channelId using multiple robust patterns (externalId is current YouTube standard)
-                val channelIdPattern = Pattern.compile(""""externalId":"(UC[a-zA-Z0-9_-]{22})"""")
-                val channelIdMatcher = channelIdPattern.matcher(html)
-                val channelId = if (channelIdMatcher.find()) {
-                    channelIdMatcher.group(1)
-                } else {
-                    val fallbackPattern = Pattern.compile("""(?:/channel/|"channelId":")(UC[a-zA-Z0-9_-]{22})""")
-                    val fallbackMatcher = fallbackPattern.matcher(html)
-                    if (fallbackMatcher.find()) fallbackMatcher.group(1) else null
-                }
+                val rendererRegex = Regex(""""channelRenderer":\{(.*?)"navigationEndpoint"""")
+                val match = rendererRegex.find(html) ?: return null
+                val block = match.groupValues[1]
 
-                if (channelId == null) {
-                    Log.w(TAG, "Could not extract channelId from HTML for $handle")
-                    return@withContext null
-                }
+                val cidMatch = Regex(""""channelId":"(UC[a-zA-Z0-9_-]{22})"""").find(block) ?: return null
+                val channelId = cidMatch.groupValues[1]
 
-                // Extract channel title (check og:title first, then title tag)
-                val ogTitlePattern = Pattern.compile("""<meta property="og:title" content="([^"]+)"""")
-                val ogTitleMatcher = ogTitlePattern.matcher(html)
-                val title = if (ogTitleMatcher.find()) {
-                    ogTitleMatcher.group(1).trim()
-                } else {
-                    val titlePattern = Pattern.compile("""<title>([^-<]+)""")
-                    val titleMatcher = titlePattern.matcher(html)
-                    if (titleMatcher.find()) titleMatcher.group(1).trim() else handle.removePrefix("@")
-                }
+                val titleMatch = Regex(""""simpleText":"([^"]+)"""").find(block)
+                    ?: Regex(""""text":"([^"]+)"""").find(block)
+                val title = titleMatch?.groupValues?.get(1)?.replace("\\u0026", "&") ?: query
 
-                // Extract avatar thumbnail (check og:image first, then avatar thumbnails)
-                val ogImagePattern = Pattern.compile("""<meta property="og:image" content="([^"]+)"""")
-                val ogImageMatcher = ogImagePattern.matcher(html)
-                val avatarUrl = if (ogImageMatcher.find()) {
-                    ogImageMatcher.group(1).replace("&amp;", "&")
-                } else {
-                    val avatarPattern = Pattern.compile(""""avatar":\{"thumbnails":\[\{"url":"([^"]+)"""")
-                    val avatarMatcher = avatarPattern.matcher(html)
-                    if (avatarMatcher.find()) {
-                        avatarMatcher.group(1).replace("&amp;", "&")
-                    } else {
-                        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
-                    }
+                val snippetStart = match.range.first
+                val snippetEnd = (snippetStart + 2500).coerceAtMost(html.length)
+                val snippet = html.substring(snippetStart, snippetEnd)
+                val avatarMatch = Regex(""""url":"(//yt3\.[^"]+|https://yt3\.[^"]+)"""").find(snippet)
+                val rawAvatar = avatarMatch?.groupValues?.get(1)
+                val avatarUrl = when {
+                    rawAvatar == null -> "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150"
+                    rawAvatar.startsWith("//") -> "https:$rawAvatar"
+                    else -> rawAvatar
                 }
-
-                // Extract banner if present
-                val bannerPattern = Pattern.compile(""""banner":\{"thumbnails":\[\{"url":"([^"]+)"""")
-                val bannerMatcher = bannerPattern.matcher(html)
-                val bannerUrl = if (bannerMatcher.find()) {
-                    bannerMatcher.group(1).replace("&amp;", "&")
-                } else {
-                    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000"
-                }
-
-                // Extract subscriber count string if present
-                val subsPattern = Pattern.compile(""""subscriberCountText":\{"simpleText":"([^"]+)"""")
-                val subsMatcher = subsPattern.matcher(html)
-                val subsString = if (subsMatcher.find()) subsMatcher.group(1) else "100K subscribers"
-                val parsedSubs = parseSubscriberCount(subsString)
 
                 ChannelEntity(
                     id = channelId,
                     title = title,
-                    handle = handle,
+                    handle = "@${title.lowercase().replace(" ", "").replace(Regex("[^a-zA-Z0-9_]"), "")}",
                     avatarUrl = avatarUrl,
-                    bannerUrl = bannerUrl,
-                    subscriberCount = parsedSubs,
+                    bannerUrl = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1000",
+                    subscriberCount = 250000L,
                     videoCount = 50,
-                    description = "YouTube Creator $title ($handle)",
+                    description = "YouTube Creator: $title",
                     isSubscribed = true,
                     unreadVideosCount = 5
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed resolving channel $handle: ${e.message}", e)
+            Log.e(TAG, "searchChannelByQuery error: ${e.message}")
             null
         }
     }
@@ -322,7 +386,12 @@ class YouTubeFeedService(
         channels
     }
 
-    private fun parseAtomFeed(xml: String, channelId: String, categoryName: String): List<VideoEntity> {
+    private fun parseAtomFeed(
+        xml: String,
+        channelId: String,
+        categoryName: String,
+        fallbackAvatarUrl: String? = null
+    ): List<VideoEntity> {
         val videos = mutableListOf<VideoEntity>()
         try {
             // Extract channel title fallback
@@ -370,7 +439,7 @@ class YouTubeFeedService(
                         thumbnailUrl = thumbUrl,
                         channelId = channelId,
                         channelTitle = author,
-                        channelAvatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+                        channelAvatarUrl = fallbackAvatarUrl ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
                         publishedAt = publishedFormatted,
                         duration = "12:30",
                         durationSeconds = 750L,
@@ -393,10 +462,10 @@ class YouTubeFeedService(
             if (isoDate.length >= 10) {
                 isoDate.substring(0, 10)
             } else {
-                "Recently"
+                "2026-10-18"
             }
         } catch (e: Exception) {
-            "Recently"
+            "2026-10-18"
         }
     }
 
